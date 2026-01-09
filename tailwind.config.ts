@@ -11,6 +11,15 @@ export default {
   theme: {
     extend: {
       colors: {
+
+        user: {
+          blue: "hsl(var(--user-blue))",
+          green: "hsl(var(--user-green))",
+          purple: "hsl(var(--user-purple))",
+          pink: "hsl(var(--user-pink))",
+          yellow: "hsl(var(--user-yellow))",
+        },
+
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {

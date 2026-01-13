@@ -4,24 +4,33 @@ import { notFound } from "next/navigation";
 export default async function HouseholdDashboard({
   params,
 }: {
-  // Update the type to reflect that it's a Promise
-  params: Promise<{ id: string }>; 
+  params: Promise<{ id: string }>;
 }) {
-  // 1. Await the params to get the actual ID
-  const { id } = await params; 
-  
+  const { id } = await params;
   const supabase = await createClient();
 
-  // 2. Use the unwrapped 'id' here
-  const { data: household, error } = await supabase
+  // 1. Fetch Household Details
+  const { data: household } = await supabase
     .from("households")
     .select("*")
-    .eq("id", id) 
+    .eq("id", id)
     .single();
 
-  if (error || !household) {
-    return notFound();
-  }
+  if (!household) return notFound();
+
+  // 2. Fetch Members and their Profile details
+  // This 'join' works because of the Foreign Key relationship 
+  // between household_members and profiles
+  const { data: members } = await supabase
+    .from("household_members")
+    .select(`
+      role,
+      profiles (
+        name,
+        id
+      )
+    `)
+    .eq("household_id", id);
 
   return (
     <div className="flex-1 w-full flex flex-col gap-8 p-8">
@@ -31,18 +40,15 @@ export default async function HouseholdDashboard({
           <span className="bg-muted px-3 py-1 rounded-md text-sm font-mono border">
             Room Code: {household.room_code}
           </span>
-          <p className="text-sm text-muted-foreground">
-            Share this code to let others join.
-          </p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Inventory Summary */}
+        {/* Inventory Card */}
         <div className="p-6 border rounded-xl bg-card shadow-sm">
           <h2 className="text-xl font-semibold mb-4">Inventory</h2>
-          <p className="text-muted-foreground italic">No items found.</p>
-          <button className="mt-4 w-full bg-foreground text-background py-2 rounded-md font-medium hover:opacity-90 transition-opacity">
+          <p className="text-muted-foreground italic">No items tracked yet.</p>
+          <button className="mt-4 w-full bg-foreground text-background py-2 rounded-md font-medium hover:opacity-90">
             + Add Item
           </button>
         </div>
@@ -50,11 +56,20 @@ export default async function HouseholdDashboard({
         {/* Members List */}
         <div className="p-6 border rounded-xl bg-card shadow-sm">
           <h2 className="text-xl font-semibold mb-4">Housemates</h2>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold">
-              JD
-            </div>
-            <span className="text-sm font-medium">You (Admin)</span>
+          <div className="flex flex-col gap-4">
+            {members?.map((member: any) => (
+              <div key={member.profiles.id} className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold border border-primary/20">
+                  {member.profiles.name?.substring(0, 2).toUpperCase() || "???"}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{member.profiles.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {member.role}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

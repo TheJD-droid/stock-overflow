@@ -1,10 +1,24 @@
 -- ==========================================
--- 1. CLEANUP (Drop in order of dependencies)
+-- 1. CLEANUP (Explicitly Drop Policies & Tables)
 -- ==========================================
+
+-- Drop Policies first
+DROP POLICY IF EXISTS "Members can manage items" ON items;
+DROP POLICY IF EXISTS "Members can view items" ON items;
+DROP POLICY IF EXISTS "Users can leave a household" ON household_members;
+DROP POLICY IF EXISTS "Users can add themselves to households" ON household_members;
+DROP POLICY IF EXISTS "Members can view housemates" ON household_members;
+DROP POLICY IF EXISTS "Authenticated users can create households" ON households;
+DROP POLICY IF EXISTS "Households are discoverable by authenticated users" ON households;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON profiles;
+
+-- Drop Triggers and Functions
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user;
 DROP FUNCTION IF EXISTS check_membership;
 
+-- Drop Tables
 DROP TABLE IF EXISTS items;
 DROP TABLE IF EXISTS household_members;
 DROP TABLE IF EXISTS households;
@@ -58,7 +72,7 @@ CREATE TABLE households (
 CREATE TABLE household_members (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   household_id uuid REFERENCES households(id) ON DELETE CASCADE NOT NULL,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   role text DEFAULT 'member' CHECK (role IN ('admin', 'member')),
   joined_at timestamp with time zone DEFAULT now(),
   UNIQUE(household_id, user_id)
@@ -70,6 +84,7 @@ CREATE TABLE items (
   name text NOT NULL,
   quantity integer DEFAULT 1,
   category text,
+  last_updated_by uuid REFERENCES public.profiles(id),
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -88,18 +103,16 @@ ALTER TABLE households ENABLE ROW LEVEL SECURITY;
 ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE items ENABLE ROW LEVEL SECURITY;
 
--- Profiles: Publicly viewable, privately editable
+-- Policies
 CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Households: Discoverable for creation/joining, creation allowed for all users
 CREATE POLICY "Households are discoverable by authenticated users" 
 ON households FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can create households" 
 ON households FOR INSERT TO authenticated WITH CHECK (true);
 
--- Household Members: Using helper function to avoid circular logic
 CREATE POLICY "Members can view housemates" ON household_members FOR SELECT
 USING (check_membership(household_id, auth.uid()));
 
@@ -109,7 +122,6 @@ WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can leave a household" ON household_members FOR DELETE 
 USING (auth.uid() = user_id);
 
--- Items: Strict privacy (only members)
 CREATE POLICY "Members can view items" ON items FOR SELECT
 USING (check_membership(household_id, auth.uid()));
 

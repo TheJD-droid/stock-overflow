@@ -1,8 +1,10 @@
-'use server'
+"use server";
 
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
+// --- ACTION 1: CREATE ---
 export async function createHousehold(formData: FormData) {
   const supabase = await createClient()
   
@@ -24,7 +26,7 @@ export async function createHousehold(formData: FormData) {
     const { data: household, error: hError } = await supabase
       .from('households')
       .insert({ name })
-      .select()
+      .select("id")
       .single()
 
     if (hError) throw hError
@@ -49,4 +51,55 @@ export async function createHousehold(formData: FormData) {
 
   // 3. Success! Redirect to the new dynamic dashboard
   redirect(`/protected/dashboard/${newHouseholdId}`)
+}
+
+
+// --- ACTION 2: JOIN ---
+export async function joinHousehold(prevState: any, formData: FormData) {
+  const supabase = await createClient();
+  const roomCode = (formData.get("room_code") as string).toUpperCase();
+
+  // 1. Get user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // 2. Find the house
+  const { data: household, error: hError } = await supabase
+    .from("households")
+    .select("id")
+    .eq("room_code", roomCode)
+    .single();
+
+  if (hError || !household) {
+    return { error: "Invalid Room Code." };
+  }
+
+ const { data: existingMember } = await supabase
+  .from("household_members")
+  .select("id")
+  .eq("household_id", household.id)
+  .eq("user_id", user.id)
+  .single();
+
+if (existingMember) {
+  return { error: "You are already a member of this household! Redirecting..." };
+  // Tip: You could also just redirect them immediately if they are already in.
+}
+  // 3. Insert membership
+  const { error: mError } = await supabase
+    .from("household_members")
+    .insert({
+      household_id: household.id,
+      user_id: user.id,
+      role: "member",
+    });
+
+  if (mError) {
+    if (mError.code === '23505') return { error: "Already a member." };
+    return { error: "Join failed." };
+  }
+
+  // 4. Update and Go!
+  revalidatePath(`/protected/dashboard/${household.id}`);
+  redirect(`/protected/dashboard/${household.id}`);
 }

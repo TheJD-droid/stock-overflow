@@ -1,44 +1,35 @@
-import { createHousehold } from '@/app/actions/household'
+import { createHousehold } from "@/app/actions/household";
+import JoinHouseForm from "./JoinHouseForm"; // Import your new component
 
 export default function SetupPage() {
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md border border-gray-100">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome!</h1>
-          <p className="mt-2 text-gray-600">
-            Let's get started by creating your first shared inventory space.
-          </p>
+    <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col gap-12 p-8 justify-center min-h-[80vh]">
+      <section className="text-center space-y-4">
+        <h1 className="text-4xl font-extrabold tracking-tight">Welcome to StockOverflow</h1>
+        <p className="text-xl text-muted-foreground">To get started, create a new household or join an existing one.</p>
+      </section>
+
+      <div className="grid md:grid-cols-2 gap-8">
+        {/* OPTION 1: CREATE (Keeping it simple for now) */}
+        <div className="flex flex-col p-8 border rounded-2xl bg-card shadow-sm hover:border-primary/50 transition-colors">
+          <h2 className="text-2xl font-bold mb-2">Create</h2>
+          <p className="text-muted-foreground mb-6">Start a fresh inventory for your home.</p>
+          <form action={createHousehold} className="mt-auto space-y-4">
+            <input 
+              name="name" 
+              placeholder="Household Name" 
+              required 
+              className="w-full p-3 border rounded-lg bg-background"
+            />
+            <button className="w-full bg-primary text-primary-foreground font-bold py-3 rounded-lg hover:opacity-90">
+              Create Household
+            </button>
+          </form>
         </div>
 
-        {/* The Action Prop links the form directly to your Server Action */}
-        <form action={createHousehold} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Household Name
-            </label>
-            <input
-              type="text"
-              name="name"
-              id="name"
-              placeholder="e.g., Stiers Home or Beach Volleyball Gear"
-              required
-              className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-black"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full px-4 py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Create Household
-          </button>
-        </form>
-        
-        <p className="text-xs text-center text-gray-400 italic">
-          Tip: You can invite others using a room code once this is created.
-        </p>
+        {/* OPTION 2: JOIN (Using the new Client Component) */}
+        <JoinHouseForm /> 
       </div>
-    </main>
-  )
+    </div>
+  );
 }

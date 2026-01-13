@@ -21,17 +21,25 @@ export default async function HouseholdDashboard({
   // 2. Fetch Members and their Profile details
   // This 'join' works because of the Foreign Key relationship 
   // between household_members and profiles
-  const { data: members } = await supabase
+  const { data: members, error: membersError } = await supabase
     .from("household_members")
     .select(`
       role,
-      profiles (
+      profiles!user_id (
         name,
         id
       )
     `)
     .eq("household_id", id);
 
+    console.log("--- DEBUG HOUSEHOLD MEMBERS ---");
+    console.log("ID from URL:", id);
+    // Log the error specifically
+    if (membersError) {
+      console.error("DATABSE ERROR:", membersError.message);
+      console.error("ERROR CODE:", membersError.code);
+    }
+console.log("Members Found:", members);
   return (
     <div className="flex-1 w-full flex flex-col gap-8 p-8">
       <header className="flex flex-col gap-2">

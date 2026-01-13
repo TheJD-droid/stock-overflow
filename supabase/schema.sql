@@ -1,137 +1,118 @@
--- Clean up existing triggers and functions first
+-- ==========================================
+-- 1. CLEANUP (Drop in order of dependencies)
+-- ==========================================
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP FUNCTION IF EXISTS public.handle_new_user();
+DROP FUNCTION IF EXISTS public.handle_new_user;
+DROP FUNCTION IF EXISTS check_membership;
 
--- Drop existing tables in reverse order of dependencies
 DROP TABLE IF EXISTS items;
 DROP TABLE IF EXISTS household_members;
-DROP TABLE IF EXISTS profiles;
 DROP TABLE IF EXISTS households;
+DROP TABLE IF EXISTS profiles;
 
--- 1. HOUSEHOLDS: The primary containers
-CREATE TABLE households (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  name text NOT NULL,
-  room_code text UNIQUE DEFAULT upper(substring(md5(random()::text), 0, 7)),
-  created_at timestamp with time zone DEFAULT now()
-);
+-- ==========================================
+-- 2. EXTENSIONS & FUNCTIONS
+-- ==========================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. PROFILES: User display identities
-CREATE TABLE public.profiles (
-  id uuid REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
-  display_name text,
-  avatar_url text,
-  updated_at timestamp with time zone DEFAULT now()
-);
+-- Helper: Check membership without triggering RLS recursion
+CREATE OR REPLACE FUNCTION check_membership(h_id uuid, u_id uuid)
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM household_members
+    WHERE household_id = h_id AND user_id = u_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 3. HOUSEHOLD_MEMBERS: Connecting Profiles to Households
-CREATE TABLE household_members (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  household_id uuid REFERENCES households(id) ON DELETE CASCADE,
-  status text DEFAULT 'pending', 
-  user_color text,
-  role text DEFAULT 'member',
-  UNIQUE(user_id, household_id)
-);
-
--- 4. ITEMS: The inventory list
-CREATE TABLE items (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  household_id uuid REFERENCES households(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  category text DEFAULT 'General',
-  current_qty float DEFAULT 0,
-  threshold float DEFAULT 1,
-  last_updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  updated_at timestamp with time zone DEFAULT now()
-);
-
--- 5. AUTOMATION: Create profile automatically on signup
+-- Automation: Create profile entry on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, display_name)
+  INSERT INTO public.profiles (id, name)
   VALUES (
     new.id, 
-    COALESCE(new.raw_user_meta_data->>'display_name', 'New Member')
+    COALESCE(new.raw_user_meta_data->>'full_name', new.email, 'New User')
   );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- ==========================================
+-- 3. TABLES
+-- ==========================================
+CREATE TABLE profiles (
+  id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL PRIMARY KEY,
+  name text,
+  updated_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE households (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name text NOT NULL,
+  room_code text DEFAULT upper(substring(uuid_generate_v4()::text from 1 for 6)) UNIQUE,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE household_members (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  household_id uuid REFERENCES households(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  role text DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+  joined_at timestamp with time zone DEFAULT now(),
+  UNIQUE(household_id, user_id)
+);
+
+CREATE TABLE items (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  household_id uuid REFERENCES households(id) ON DELETE CASCADE NOT NULL,
+  name text NOT NULL,
+  quantity integer DEFAULT 1,
+  category text,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+-- ==========================================
+-- 4. TRIGGERS
+-- ==========================================
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
----
---- ROW LEVEL SECURITY (RLS) POLICIES
----
-
--- Enable RLS on all tables
-ALTER TABLE households ENABLE ROW LEVEL SECURITY;
+-- ==========================================
+-- 5. SECURITY (RLS)
+-- ==========================================
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE households ENABLE ROW LEVEL SECURITY;
 ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE items ENABLE ROW LEVEL SECURITY;
 
--- PROFILES: Everyone can see names, but only you can edit yours
+-- Profiles: Publicly viewable, privately editable
 CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- HOUSEHOLDS: Allow creation, but restrict viewing to members
-CREATE POLICY "Users can create households" ON households FOR INSERT WITH CHECK (true);
-CREATE POLICY "Users can view their own households" ON households FOR SELECT 
-USING (
-  EXISTS (
-    SELECT 1 FROM household_members 
-    WHERE household_members.household_id = households.id 
-    AND household_members.user_id = auth.uid()
-  )
-);
+-- Households: Discoverable for creation/joining, creation allowed for all users
+CREATE POLICY "Households are discoverable by authenticated users" 
+ON households FOR SELECT TO authenticated USING (true);
 
--- HOUSEHOLD_MEMBERS: Users manage their own memberships; can see housemates
-CREATE POLICY "Members can view other members in the same household" ON household_members FOR SELECT
-USING (
-  household_id IN (
-    SELECT hm.household_id FROM household_members hm WHERE hm.user_id = auth.uid()
-  )
-);
-CREATE POLICY "Users can join a household" ON household_members FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can leave a household" ON household_members FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Authenticated users can create households" 
+ON households FOR INSERT TO authenticated WITH CHECK (true);
 
--- ITEMS: Strict household-based CRUD access
-CREATE POLICY "Users can view items in their own household" ON items FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM household_members 
-    WHERE household_members.household_id = items.household_id 
-    AND household_members.user_id = auth.uid()
-  )
-);
+-- Household Members: Using helper function to avoid circular logic
+CREATE POLICY "Members can view housemates" ON household_members FOR SELECT
+USING (check_membership(household_id, auth.uid()));
 
-CREATE POLICY "Users can insert items into their own household" ON items FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM household_members 
-    WHERE household_members.household_id = items.household_id 
-    AND household_members.user_id = auth.uid()
-  )
-);
+CREATE POLICY "Users can add themselves to households" ON household_members FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can update items in their own household" ON items FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM household_members 
-    WHERE household_members.household_id = items.household_id 
-    AND household_members.user_id = auth.uid()
-  )
-);
+CREATE POLICY "Users can leave a household" ON household_members FOR DELETE 
+USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can delete items in their own household" ON items FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1 FROM household_members 
-    WHERE household_members.household_id = items.household_id 
-    AND household_members.user_id = auth.uid()
-  )
-);
+-- Items: Strict privacy (only members)
+CREATE POLICY "Members can view items" ON items FOR SELECT
+USING (check_membership(household_id, auth.uid()));
+
+CREATE POLICY "Members can manage items" ON items FOR ALL
+USING (check_membership(household_id, auth.uid()))
+WITH CHECK (check_membership(household_id, auth.uid()));

@@ -48,5 +48,5 @@ export async function createHousehold(formData: FormData) {
 }
 
   // 3. Success! Redirect to the new dynamic dashboard
-  redirect(`/dashboard/${newHouseholdId}`)
+  redirect(`/protected/dashboard/${newHouseholdId}`)
 }

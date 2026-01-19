@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import AddItemForm from "@/components/features/pantry/AddItemForm";
 
-export default async function HouseholdDashboard({
-  params,
-}: {
-  params: Promise<{ id: string }>;
+export default async function HouseholdDashboard({ 
+  params, 
+}: { 
+  params: Promise<{ id: string }> 
 }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -55,10 +56,15 @@ console.log("Members Found:", members);
         {/* Inventory Card */}
         <div className="p-6 border rounded-xl bg-card shadow-sm">
           <h2 className="text-xl font-semibold mb-4">Inventory</h2>
-          <p className="text-muted-foreground italic">No items tracked yet.</p>
-          <button className="mt-4 w-full bg-foreground text-background py-2 rounded-md font-medium hover:opacity-90">
-            + Add Item
-          </button>
+          
+          {/* 1. We'll eventually fetch and list items here */}
+          <p className="text-muted-foreground italic mb-6">No items tracked yet.</p>
+          
+          {/* 2. Insert the New Form here */}
+          <div className="pt-4 border-t">
+            <h3 className="text-sm font-medium mb-3">Add New Item</h3>
+            <AddItemForm householdId={id} />
+          </div>
         </div>
 
         {/* Members List */}

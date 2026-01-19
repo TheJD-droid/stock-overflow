@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { joinHousehold } from "@/app/actions/household";
+import { joinHousehold } from "@/lib/actions/household";
 import { Button } from "@/components/ui/button";
 
 export default function JoinHouseForm() {

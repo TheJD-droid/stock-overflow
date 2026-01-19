@@ -1,5 +1,5 @@
-import { createHousehold } from "@/app/actions/household";
-import JoinHouseForm from "./JoinHouseForm"; // Import your new component
+import { createHousehold } from "@/lib/actions/household";
+import JoinHouseForm from "../../../components/features/households/JoinHouseForm"; // Import your new component
 
 export default function SetupPage() {
   return (

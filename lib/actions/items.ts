@@ -38,3 +38,36 @@ export async function addItem(formData: FormData) {
   // 4. Refresh the specific household dashboard
   revalidatePath(`/protected/dashboard/${household_id}`);
 }
+
+/**
+ * Handles both relative adjustments (increment/decrement) 
+ * and absolute overrides (manual input deltas).
+ */
+export async function handleQuantityChange(
+  itemId: string,
+  householdId: string,
+  value: number,
+  isRelative: boolean
+) {
+  const supabase = await createClient();
+
+  // 1. Ensure user is authenticated so auth.uid() works in the SQL function
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  // 2. Call the Atomic SQL function
+  const { error } = await supabase.rpc("update_item_quantity_atomic", {
+    target_item_id: itemId,
+    target_household_id: householdId,
+    new_value: value,
+    is_relative: isRelative,
+  });
+
+  if (error) {
+    console.error("RPC Update Error:", error.message);
+    return { error: "Failed to update quantity. Please try again." };
+  }
+
+  // 3. Revalidate the dashboard so the UI reflects the new database state
+  revalidatePath(`/protected/dashboard/${householdId}`);
+}

@@ -1,92 +1,22 @@
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
-import AddItemForm from "@/components/features/pantry/AddItemForm";
+import { Suspense } from "react";
+import DashboardContent from "@/components/features/dashboard/DashboardContent";
 
-export default async function HouseholdDashboard({ 
-  params, 
-}: { 
-  params: Promise<{ id: string }> 
+export default function HouseholdDashboardPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const supabase = await createClient();
-
-  // 1. Fetch Household Details
-  const { data: household } = await supabase
-    .from("households")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (!household) return notFound();
-
-  // 2. Fetch Members and their Profile details
-  // This 'join' works because of the Foreign Key relationship 
-  // between household_members and profiles
-  const { data: members, error: membersError } = await supabase
-    .from("household_members")
-    .select(`
-      role,
-      profiles!user_id (
-        name,
-        id
-      )
-    `)
-    .eq("household_id", id);
-
-    console.log("--- DEBUG HOUSEHOLD MEMBERS ---");
-    console.log("ID from URL:", id);
-    // Log the error specifically
-    if (membersError) {
-      console.error("DATABSE ERROR:", membersError.message);
-      console.error("ERROR CODE:", membersError.code);
-    }
-console.log("Members Found:", members);
   return (
     <div className="flex-1 w-full flex flex-col gap-8 p-8">
+      {/* This renders INSTANTLY because it doesn't 'await' anything */}
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold">{household.name}</h1>
-        <div className="flex items-center gap-4">
-          <span className="bg-muted px-3 py-1 rounded-md text-sm font-mono border">
-            Room Code: {household.room_code}
-          </span>
-        </div>
+        <h1 className="text-3xl font-bold italic text-primary">StockOverflow</h1>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Inventory Card */}
-        <div className="p-6 border rounded-xl bg-card shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">Inventory</h2>
-          
-          {/* 1. We'll eventually fetch and list items here */}
-          <p className="text-muted-foreground italic mb-6">No items tracked yet.</p>
-          
-          {/* 2. Insert the New Form here */}
-          <div className="pt-4 border-t">
-            <h3 className="text-sm font-medium mb-3">Add New Item</h3>
-            <AddItemForm householdId={id} />
-          </div>
-        </div>
-
-        {/* Members List */}
-        <div className="p-6 border rounded-xl bg-card shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">Housemates</h2>
-          <div className="flex flex-col gap-4">
-            {members?.map((member: any) => (
-              <div key={member.profiles.id} className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold border border-primary/20">
-                  {member.profiles.name?.substring(0, 2).toUpperCase() || "???"}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{member.profiles.name}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {member.role}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Only the parts that need the ID are wrapped in Suspense */}
+      <Suspense fallback={<div className="p-4 animate-pulse text-muted-foreground">Connecting to household...</div>}>
+        <DashboardContent params={params} />
+      </Suspense>
     </div>
   );
 }

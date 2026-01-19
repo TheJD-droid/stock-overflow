@@ -53,6 +53,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 1. Remove any old version to avoid conflicts
+DROP FUNCTION IF EXISTS public.update_item_quantity_atomic(uuid, uuid, integer, boolean);
+
+-- 2. Create the fresh version
+CREATE OR REPLACE FUNCTION public.update_item_quantity_atomic(
+  target_item_id UUID,
+  target_household_id UUID,
+  new_value INTEGER,
+  is_relative BOOLEAN DEFAULT FALSE
+)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE items
+  SET quantity = CASE 
+    WHEN is_relative THEN COALESCE(items.quantity, 0) + new_value 
+    ELSE new_value 
+  END,
+  last_updated_by = auth.uid()
+  WHERE id = target_item_id 
+  AND household_id = target_household_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ==========================================
 -- 3. TABLES
 -- ==========================================

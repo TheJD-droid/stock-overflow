@@ -7,19 +7,19 @@ import { redirect } from "next/navigation";
 export async function addItem(formData: FormData) {
   const supabase = await createClient();
   
-  // 1. Get current user
+  //  Get current user
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  // 2. Extract data from form
+  // Extract data from form
   const household_id = formData.get("household_id") as string;
   const name = formData.get("name") as string;
   const category = formData.get("category") as string;
   const quantity = Number(formData.get("quantity")) || 1;
 
-  // 3. Insert the item
+  // Insert the item
   // Note: RLS 'Members can manage items' policy will automatically 
-  // block this if the user isn't in household_members!
+  // block this if the user isn't in household_members
   const { error } = await supabase
     .from("items")
     .insert({
@@ -35,7 +35,7 @@ export async function addItem(formData: FormData) {
     return { error: "Failed to add item" };
   }
 
-  // 4. Refresh the specific household dashboard
+  // Refresh the specific household dashboard
   revalidatePath(`/protected/dashboard/${household_id}`);
 }
 
@@ -51,11 +51,11 @@ export async function handleQuantityChange(
 ) {
   const supabase = await createClient();
 
-  // 1. Ensure user is authenticated so auth.uid() works in the SQL function
+  // Ensure user is authenticated so auth.uid() works in the SQL function
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  // 2. Call the Atomic SQL function
+  // Call the Atomic SQL function
   const { error } = await supabase.rpc("update_item_quantity_atomic", {
     target_item_id: itemId,
     target_household_id: householdId,
@@ -68,6 +68,30 @@ export async function handleQuantityChange(
     return { error: "Failed to update quantity. Please try again." };
   }
 
-  // 3. Revalidate the dashboard so the UI reflects the new database state
+  // Revalidate the dashboard so the UI reflects the new database state
+  revalidatePath(`/protected/dashboard/${householdId}`);
+}
+
+
+export async function deleteItem(itemId: string, householdId: string) {
+  const supabase = await createClient();
+
+  // Auth check
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  // Delete with household_id check for extra security
+  const { error } = await supabase
+    .from("items")
+    .delete()
+    .eq("id", itemId)
+    .eq("household_id", householdId);
+
+  if (error) {
+    console.error("Delete Error:", error.message);
+    return { error: "Could not delete item." };
+  }
+
+  // Refresh the UI
   revalidatePath(`/protected/dashboard/${householdId}`);
 }

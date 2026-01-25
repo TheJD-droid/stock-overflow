@@ -14,26 +14,65 @@ export async function addItem(formData: FormData) {
   // Extract data from form
   const household_id = formData.get("household_id") as string;
   const name = formData.get("name") as string;
-  const category = formData.get("category") as string;
   const quantity = Number(formData.get("quantity")) || 1;
+  const units = formData.get("units") as string;
+  const category = formData.get("category") as string;
+  const threshold = Number(formData.get("threshold")) || 0;
 
-  // Insert the item
-  // Note: RLS 'Members can manage items' policy will automatically 
-  // block this if the user isn't in household_members
-  const { error } = await supabase
-    .from("items")
-    .insert({
-      name,
-      quantity,
-      category,
-      household_id,
-      last_updated_by: user.id, // Matching your schema name
-    });
-
-  if (error) {
-    console.error("Error adding item:", error);
-    return { error: "Failed to add item" };
+  if (!household_id || !name) {
+    return { error: "Missing required fields" };
   }
+
+
+  // Check if the item already exists in the household
+  const { data: existingItem, error: fetchError } = await supabase
+    .from("items")
+    .select("id, quantity")
+    .eq("household_id", household_id)
+    .ilike("name", name)
+    .single();
+
+    if (fetchError && fetchError.code !== "PGRST116") { // PGRST116: No rows found
+      console.error("Error checking existing item:", fetchError);
+      return { error: "Failed to check existing items" };
+    }
+
+    if (existingItem) {
+      // If it exists, update the quantity instead of adding a new item
+      const { error: updateError } = await supabase.rpc("update_item_quantity_atomic", {
+        target_item_id: existingItem.id,
+        target_household_id: household_id,
+        new_value: quantity,
+        is_relative: true,
+      });
+      if (updateError) {
+        console.error("Error updating existing item quantity:", updateError);
+        return { error: "Failed to update existing item quantity" };
+      }
+    }
+    else {
+
+    // Insert the item
+    // Note: RLS 'Members can manage items' policy will automatically 
+    // block this if the user isn't in household_members
+    const { error: insertError } = await supabase
+      .from("items")
+      .insert({
+        name,
+        quantity,
+        units,
+        threshold_quantity: threshold,
+        category,
+        household_id,
+        last_updated_by: user.id,
+      });
+
+    if (insertError) {
+      console.error("Error adding item:", insertError);
+      return { error: "Failed to add item" };
+    }
+  }
+
 
   // Refresh the specific household dashboard
   revalidatePath(`/protected/dashboard/${household_id}`);

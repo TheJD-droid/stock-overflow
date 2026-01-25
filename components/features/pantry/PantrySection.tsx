@@ -12,6 +12,7 @@ export default async function PantrySection({ householdId }: { householdId: stri
     .eq("household_id", householdId)
     .order("name", { ascending: true }); // Alphabetical order is usually best for pantries
 
+  const existingItemNames = items ? items.map(item => item.name) : [];
   return (
     <div className="p-6 border rounded-xl bg-card shadow-sm">
       <h2 className="text-xl font-semibold mb-6">Pantry</h2>
@@ -21,7 +22,7 @@ export default async function PantrySection({ householdId }: { householdId: stri
 
       <div className="pt-6 mt-6 border-t">
         <h3 className="text-sm font-medium mb-4">Add to Stock</h3>
-        <AddItemForm householdId={householdId} />
+        <AddItemForm householdId={householdId} existingItemNames={existingItemNames} />
       </div>
     </div>
   );

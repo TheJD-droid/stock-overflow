@@ -4,7 +4,7 @@ import DashboardContent from "@/components/features/dashboard/DashboardContent";
 export default function HouseholdDashboardPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+    params: Promise<{ id: string }>;
 }) {
   return (
     <div className="flex-1 w-full flex flex-col gap-8 p-8">
